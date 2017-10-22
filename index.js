@@ -245,7 +245,7 @@ WHERE
   message.id > ${last_message_id} 
 AND 
   channel_id = ${channel_id}
-limit 100`;
+ORDER BY message.id DESC LIMIT 100`;
 
   return pool.query(sql)
     .then((rows)=>{
