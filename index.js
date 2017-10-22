@@ -356,12 +356,12 @@ SELECT
 FROM 
   message 
 LEFT JOIN 
-  user as u
+  user as u 
 ON 
   message.user_id = u.id 
 WHERE 
   channel_id = ${channelId} 
-ORDER BY id DESC LIMIT ${N} OFFSET ${(page - 1) * N}'      
+ORDER BY message.id DESC LIMIT ${N} OFFSET ${(page - 1) * N}
       `;
       return pool.query(sql)
         .then((rows) => {
@@ -372,7 +372,7 @@ ORDER BY id DESC LIMIT ${N} OFFSET ${(page - 1) * N}'
             r.user = {
               name: row.user_name,
               display_name: row.display_name,
-              avatar_icona: row.avatar_icon,
+              avatar_icon: row.avatar_icon,
             };
             r.date = formatDate(row.message_created_at)
             r.content = row.message_content;
