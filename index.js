@@ -275,29 +275,30 @@ function fetchUnread(req, res) {
     return
   }
 
-  return sleep(1.0)
-    .then(() => pool.query('SELECT id FROM channel'))
+  return Promise.resolve()
+    .then(() => pool.query('SELECT channel.id as channelId, haveread.message_id as messageId FROM channel LEFT JOIN' +
+      ' haveread ON channel.id = haveread.channel_id AND haveread.user_id = ?', [userId]))
     .then(rows => {
-      const channelIds = rows.map(row => row.id)
       const results = []
       let p = Promise.resolve()
 
-      channelIds.forEach(channelId => {
-        p = p.then(() => pool.query('SELECT * FROM haveread WHERE user_id = ? AND channel_id = ?', [userId, channelId]))
-          .then(([row]) => {
-            if (row) {
-              return pool.query('SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id', [channelId, row.message_id])
-            } else {
-              return pool.query('SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?', [channelId])
-            }
-          })
-          .then(([row3]) => {
-            const r = {}
-            r.channel_id = channelId
-            r.unread = row3.cnt
-            results.push(r)
-          })
-      })
+      rows.forEach(row => {
+        const channelId = row.channelId
+        const messageId = row.messageId
+
+        p = p.then(() => {
+          if (messageId) {
+            return pool.query('SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id', [channelId, messageId])
+          } else {
+            return pool.query('SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?', [channelId])
+          }
+        }).then(([row3]) => {
+          const r = {}
+          r.channel_id = channelId
+          r.unread = row3.cnt
+          results.push(r)
+        })
+      });
 
       return p.then(() => results)
     })
