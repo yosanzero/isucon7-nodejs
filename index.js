@@ -337,47 +337,60 @@ function fetchUnread(req, res) {
 app.get('/history/:channelId', loginRequired, getHistory)
 function getHistory(req, res) {
   const { channelId } = req.params
-  let page = parseInt(req.query.page || '1')
+  let page = parseInt(req.query.page || '1');
 
-  const N = 20
+  const N = 20;
   return pool.query('SELECT count as cnt FROM channel WHERE id = ?', [channelId])
     .then(([row2]) => {
       const cnt = row2.cnt
       const maxPage = Math.max(Math.ceil(cnt / N), 1)
 
       if (isNaN(page) || page < 1 || page > maxPage) {
-        res.status(400).end()
+        res.status(400).end();
         return
       }
+      const sql = `
+SELECT 
+  message.id as message_id, message.created_at as message_created_at, message.content as message_content, 
+  u.name as user_name, u.display_name, u.avatar_icon 
+FROM 
+  message 
+LEFT JOIN 
+  user as u
+ON 
+  message.user_id = u.id 
+WHERE 
+  channel_id = ${channelId} 
+ORDER BY id DESC LIMIT ${N} OFFSET ${(page - 1) * N}'      
+      `;
+      return pool.query(sql)
+        .then((rows) => {
+          const messages = [];
+          rows.forEach((row) => {
+            const r = {};
+            r.id = row.message_id;
+            r.user = {
+              name: row.user_name,
+              display_name: row.display_name,
+              avatar_icona: row.avatar_icon,
+            };
+            r.date = formatDate(row.message_created_at)
+            r.content = row.message_content;
 
-      return pool.query('SELECT * FROM message WHERE channel_id = ? ORDER BY id DESC LIMIT ? OFFSET ?', [channelId, N, (page - 1) * N])
-        .then(rows => {
-          const messages = []
-          let p = Promise.resolve()
-          rows.forEach(row => {
-            const r = {}
-            r.id = row.id
-            p = p.then(() => {
-              return pool.query('SELECT name, display_name, avatar_icon FROM user WHERE id = ?', [row.user_id])
-                .then(([user]) => {
-                  r.user = user
-                  r.date = formatDate(row.created_at)
-                  r.content = row.content
-                  messages.push(r)
+            messages.push(r);
+          });
+
+          return Promise.resolve()
+            .then(() => {
+              messages.reverse();
+              return getChannelListInfo(pool, channelId)
+                .then(({ channels, description }) => {
+                  res.render('history', {
+                    req, channels, channelId, messages, maxPage, page,
+                  })
                 })
             })
-          })
-
-          return p.then(() => {
-            messages.reverse()
-            return getChannelListInfo(pool, channelId)
-              .then(({ channels, description }) => {
-                res.render('history', {
-                  req, channels, channelId, messages, maxPage, page,
-                })
-              })
-          })
-      })
+        })
     })
 }
 
