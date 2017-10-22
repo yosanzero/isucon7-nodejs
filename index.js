@@ -228,28 +228,42 @@ function getMessage(req, res) {
     return
   }
 
-  const { channel_id, last_message_id } = req.query
-  return pool.query('SELECT * FROM message WHERE id > ? AND channel_id = ? ORDER BY id DESC LIMIT 100', [last_message_id, channel_id])
-    .then(rows => {
-      const response = []
-      let p = Promise.resolve()
-      rows.forEach((row, i) => {
-        const r = {}
-        r.id = row.id
-        p = p.then(() => {
-          return pool.query('SELECT name, display_name, avatar_icon FROM user WHERE id = ?', [row.user_id])
-            .then(([user]) => {
-              r.user = user
-              r.date = formatDate(row.created_at)
-              r.content = row.content
-              response[i] = r
-            })
-        })
-      })
+  const { channel_id, last_message_id } = req.query;
+  const sql = `
+SELECT 
+  message.id as message_id, message.created_at as message_created_at, message.content as message_content, 
+  u.name as user_name, u.display_name, u.avatar_icon 
+FROM 
+  message 
+LEFT JOIN 
+  user as u
+ON 
+  message.user_id = u.id
+WHERE 
+  message.id > ${last_message_id} 
+AND 
+  channel_id = ${channel_id}`;
 
+  return pool.query(sql)
+    .then((rows)=>{
+      const response = [];
+      let p = Promise.resolve();
+
+      rows.forEach((row, i) => {
+        const r = {};
+        r.id = row.message_id;
+        r.date = formatDate(row.message_created_at)
+        r.content = row.message_content;
+        r.user = {
+          name: row.user_name,
+          display_name: row.display_name,
+          avatar_icona: row.avatar_icon,
+        };
+        response[i] = r;
+      });
       return p.then(() => {
         response.reverse()
-        const maxMessageId = rows.length ? Math.max(...rows.map(r => r.id)) : 0
+        const maxMessageId = rows.length ? Math.max(...rows.map(r => r.message_id)) : 0
         return pool.query(`INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)
           VALUES (?, ?, ?, NOW(), NOW())
           ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()`,
