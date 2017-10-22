@@ -244,7 +244,8 @@ ON
 WHERE 
   message.id > ${last_message_id} 
 AND 
-  channel_id = ${channel_id}`;
+  channel_id = ${channel_id}
+limit 100`;
 
   return pool.query(sql)
     .then((rows)=>{
