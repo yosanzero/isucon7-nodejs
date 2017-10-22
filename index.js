@@ -52,6 +52,7 @@ function getInitialize(req, res) {
     .then(() => pool.query('DELETE FROM channel WHERE id > 10'))
     .then(() => pool.query('DELETE FROM message WHERE id > 10000'))
     .then(() => pool.query('DELETE FROM haveread'))
+    .then(() => pool.query('UPDATE channel AS c SET c.count = (SELECT count(*) FROM message WHERE channel_id = c.id)'))
     .then(() => res.status(204).send(''))
 }
 
@@ -62,6 +63,7 @@ function dbGetUser(conn, userId) {
 
 function dbAddMessage(conn, channelId, userId, content) {
   return conn.query('INSERT INTO message (channel_id, user_id, content, created_at) VALUES (?, ?, ?, NOW())', [channelId, userId, content])
+    .then(() => conn.query('UPDATE channel SET count = count+1 WHERE id = ?', [channelId]))
 }
 
 function loginRequired(req, res, next) {
@@ -277,8 +279,7 @@ function fetchUnread(req, res) {
 
   const messagesCnt = {}
   return Promise.resolve()
-    .then(() => pool.query('SELECT channel.id as channelId, ifnull(m.cnt, 0) as cnt FROM channel LEFT JOIN (SELECT channel_id, count(*) as cnt' +
-      ' FROM message GROUP BY channel_id) AS m ON channel.id = m.channel_id;'))
+    .then(() => pool.query('SELECT id as channelId, count as cnt FROM channel'))
     .then(rows => {
       rows.forEach(row => {
         const channelId = row.channelId
@@ -324,7 +325,7 @@ function getHistory(req, res) {
   let page = parseInt(req.query.page || '1')
 
   const N = 20
-  return pool.query('SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?', [channelId])
+  return pool.query('SELECT count as cnt FROM channel WHERE id = ?', [channelId])
     .then(([row2]) => {
       const cnt = row2.cnt
       const maxPage = Math.max(Math.ceil(cnt / N), 1)
@@ -399,7 +400,7 @@ function postAddChannel(req, res) {
     return
   }
 
-  return pool.query('INSERT INTO channel (name, description, updated_at, created_at) VALUES (?, ?, NOW(), NOW())', [name, description])
+  return pool.query('INSERT INTO channel (name, count, description, updated_at, created_at) VALUES (?, 0, ?, NOW(), NOW())', [name, description])
     .then(({ insertId }) => {
       res.redirect(303, '/channel/' + insertId)
     })
