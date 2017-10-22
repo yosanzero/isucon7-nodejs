@@ -275,34 +275,47 @@ function fetchUnread(req, res) {
     return
   }
 
+  const messagesCnt = {}
   return Promise.resolve()
-    .then(() => pool.query('SELECT channel.id as channelId, haveread.message_id as messageId FROM channel LEFT JOIN' +
-      ' haveread ON channel.id = haveread.channel_id AND haveread.user_id = ?', [userId]))
+    .then(() => pool.query('SELECT channel.id as channelId, ifnull(m.cnt, 0) as cnt FROM channel LEFT JOIN (SELECT channel_id, count(*) as cnt' +
+      ' FROM message GROUP BY channel_id) AS m ON channel.id = m.channel_id;'))
     .then(rows => {
-      const results = []
-      let p = Promise.resolve()
-
       rows.forEach(row => {
         const channelId = row.channelId
-        const messageId = row.messageId
+        const cnt       = row.cnt
+        messagesCnt[channelId] = cnt
+      })
+      return messagesCnt
+    }).then((messagesCnt) => {
+      return Promise.resolve()
+        .then(() => pool.query('SELECT channel.id as channelId, haveread.message_id as messageId FROM channel LEFT JOIN' +
+          ' haveread ON channel.id = haveread.channel_id AND haveread.user_id = ?', [userId]))
+        .then(rows => {
+          const results = []
+          let p = Promise.resolve()
 
-        p = p.then(() => {
-          if (messageId) {
-            return pool.query('SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id', [channelId, messageId])
-          } else {
-            return pool.query('SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?', [channelId])
-          }
-        }).then(([row3]) => {
-          const r = {}
-          r.channel_id = channelId
-          r.unread = row3.cnt
-          results.push(r)
+          rows.forEach(row => {
+            const channelId = row.channelId
+            const messageId = row.messageId
+
+            p = p.then(() => {
+              if (messageId) {
+                return pool.query('SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id', [channelId, messageId])
+              } else {
+                return [{ cnt: messagesCnt[channelId] }]
+              }
+            }).then(([row3]) => {
+              const r = {}
+              r.channel_id = channelId
+              r.unread = row3.cnt
+              results.push(r)
+            })
+          });
+
+          return p.then(() => results)
         })
-      });
-
-      return p.then(() => results)
+        .then(results => res.json(results))
     })
-    .then(results => res.json(results))
 }
 
 app.get('/history/:channelId', loginRequired, getHistory)
