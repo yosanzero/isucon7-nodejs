@@ -451,41 +451,46 @@ function postProfile(req, res) {
 
       const { display_name } = req.body
       const avatar_icon = req.file
-      let avatarName, avatarData
+      let avatarName, avatarData;
 
-      let p = Promise.resolve()
-      if (avatar_icon) {
-        if (avatar_icon.originalname) {
-          const ext = path.extname(avatar_icon.originalname) || ''
-          if (!['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) {
-            res.status(400).end()
-            return
-          }
+        Promise.resolve()
+            .then(()=>{
+                return new Promise((resolve, reject)=>{
+                    if(avatar_icon && avatar_icon.originalname) {
+                        const ext = path.extname(avatar_icon.originalname) || ''
+                        if (!['.jpg', '.jpeg', '.png', '.gif'].includes(ext) || avatar_icon.size > AVATAR_MAX_SIZE) {
+                            reject();
+                        }else{
+                            const data = fs.readFileSync(avatar_icon.path)
+                            const shasum = crypto.createHash('sha1')
+                            shasum.update(data)
+                            const digest = shasum.digest('hex')
 
-          if (avatar_icon.size > AVATAR_MAX_SIZE) {
-            res.status(400).end()
-            return
-          }
+                            avatarName = digest + (ext ? `${ext}` : '')
+                            avatarData = data;
 
-          const data = fs.readFileSync(avatar_icon.path)
-          const shasum = crypto.createHash('sha1')
-          shasum.update(data)
-          const digest = shasum.digest('hex')
+                            resolve();
+                        }
 
-          avatarName = digest + (ext ? `${ext}` : '')
-          avatarData = data
-        }
-      }
-      if (avatarName && avatarData) {
-        p = p.then(() => writeIcon(avatarName, avatarData))
-        p = p.then(() => pool.query('UPDATE user SET avatar_icon = ? WHERE id = ?', [avatarName, userId]))
-      }
+                    } else {
+                        resolve();
+                    }
+                })
+            })
+            .then(()=>{
+                const promiseList = [];
+                if (avatarName && avatarData) {
+                    promiseList.push(writeIcon(avatarName, avatarData));
+                    promiseList.push(pool.query('UPDATE user SET avatar_icon = ? WHERE id = ?', [avatarName, userId]))
+                }
+                if (display_name) {
+                    promiseList.push(pool.query('UPDATE user SET display_name = ? WHERE id = ?', [display_name, userId]))
+                }
 
-      if (display_name) {
-        p = p.then(() => pool.query('UPDATE user SET display_name = ? WHERE id = ?', [display_name, userId]))
-      }
-
-      return p.then(() => res.redirect(303, '/'))
+                return Promise.all(promiseList);
+            })
+            .then(() => res.redirect(303, '/'))
+            .catch(()=>res.status(400).end());
     })
 }
 
