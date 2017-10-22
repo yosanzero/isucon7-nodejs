@@ -435,7 +435,7 @@ function postProfile(req, res) {
         }
       }
       if (avatarName && avatarData) {
-        p = p.then(() => pool.query('INSERT INTO image (name, data) VALUES (?, _binary ?)', [avatarName, avatarData]))
+        p = p.then(() => writeIcon(avatarName, avatarData))
         p = p.then(() => pool.query('UPDATE user SET avatar_icon = ? WHERE id = ?', [avatarName, userId]))
       }
 
@@ -446,6 +446,27 @@ function postProfile(req, res) {
       return p.then(() => res.redirect(303, '/'))
     })
 }
+
+/**
+ * アイコンファイルを public/iconsフォルダに書き込むPromiseを返却します。
+ *
+ * @param name
+ * @param data
+ * @return {Promise}
+ */
+function writeIcon(name, data) {
+    return new Promise((resolve, reject) => {
+        fs.writeFile(`${ICONS_FOLDER}/${name}`, data, function (err) {
+            if (err) {
+                console.error(err);
+                reject();
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+
 
 function ext2mime(ext) {
   switch(ext) {
@@ -462,17 +483,39 @@ function ext2mime(ext) {
 }
 
 app.get('/icons/:fileName', getIcon)
+
 function getIcon(req, res) {
-  const { fileName } = req.params
-  return pool.query('SELECT * FROM image WHERE name = ?', [fileName])
-    .then(([row]) => {
-      const ext = path.extname(fileName) || ''
-      const mime = ext2mime(ext)
-      if (!row || !mime) {
-        res.status(404).end()
-        return
-      }
-      res.header({ 'Content-Type': mime }).end(row.data)
+    const {fileName} = req.params
+    const ext = path.extname(fileName) || '';
+    const mime = ext2mime(ext);
+
+    return loadIconFile(fileName)
+        .then((data) => {
+            res.header({'Content-Type': mime}).end(data);
+        })
+        .catch(() => {
+            res.status(404).end();
+        })
+}
+
+/**
+ * アイコン画像をpublic/iconsから読みこむPromiseを返す
+ *
+ * @param name
+ * @return {Promise}
+ */
+function loadIconFile(name) {
+    const options = {
+        encoding: 'utf-8'
+    };
+    return new Promise((resolve, reject) => {
+        fs.readFile(`${ICONS_FOLDER}/${name}`, options, function (err, data) {
+            if (err) {
+                reject();
+            } else {
+                resolve(data);
+            }
+        })
     })
 }
 
