@@ -260,7 +260,7 @@ ORDER BY message.id DESC LIMIT 100`;
         r.user = {
           name: row.user_name,
           display_name: row.display_name,
-          avatar_icona: row.avatar_icon,
+          avatar_icon: row.avatar_icon,
         };
         response[i] = r;
       });
